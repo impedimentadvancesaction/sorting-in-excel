@@ -78,7 +78,6 @@ Public Sub GenerateReports()
             ws3.Range("A1").Value = "Activate multiple " & provider & " games on Desktop & Mobile (" & crq & ")"
             ws3.Range("A4").Value = "Activate multiple " & provider & " games on Desktop & Mobile" & vbCrLf & "New Content"
         End If
-        ws3.Range("A4").Value = ws3.Range("A1").Value & vbCrLf & "New Content"
         ws3.Range("A16").Value = Format(CDate(ws4.Range("K3").Value), "MMMM dd, yyyy") & " - 1 Hour"
         
         For r = 2 To lastRow1
