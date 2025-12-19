@@ -1,0 +1,176 @@
+Option Explicit
+
+Sub GenerateReports()
+
+    Dim ws1 As Worksheet, ws2 As Worksheet, ws4 As Worksheet
+    Dim lastRow1 As Long, lastRow4 As Long
+    Dim dict As Object
+    Dim i As Long
+    Dim key As Variant
+    Dim templateTab2 As Variant
+    Dim exportName As String
+    
+    '--- Set references
+    Set ws1 = ThisWorkbook.Worksheets("Tab1")
+    Set ws2 = ThisWorkbook.Worksheets("Tab2")
+    Set ws4 = ThisWorkbook.Worksheets("Tab4")
+    
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+    
+    '--- Find last used rows
+    lastRow1 = ws1.Cells(ws1.Rows.Count, "A").End(xlUp).Row
+    lastRow4 = ws4.Cells(ws4.Rows.Count, "A").End(xlUp).Row
+    
+    '-----------------------------------
+    ' 1. SANITISE TAB 1 (row 2 downwards)
+    '-----------------------------------
+    Call SanitizeTab1(ws1, lastRow1)
+    
+    '-----------------------------------
+    ' 2. APPLY TAB 4 REPLACEMENTS TO COL J
+    '-----------------------------------
+    Call SubstituteFromTab4(ws1, ws4, lastRow1, lastRow4)
+    
+    '-----------------------------------
+    ' 3. BUILD UNIQUE LIST FROM TAB 1 COL A
+    '-----------------------------------
+    Set dict = CreateObject("Scripting.Dictionary")
+    
+    For i = 2 To lastRow1
+        If Trim(ws1.Cells(i, "A").Value) <> "" Then
+            If Not dict.Exists(Trim(ws1.Cells(i, "A").Value)) Then
+                dict.Add Trim(ws1.Cells(i, "A").Value), ws1.Cells(i, "A").Row
+            End If
+        End If
+    Next i
+    
+    ' If nothing to process, exit cleanly
+    If dict.Count = 0 Then
+        GoTo CleanExit
+    End If
+    
+    '-----------------------------------
+    ' 4. SNAPSHOT TAB 2 TEMPLATE
+    '-----------------------------------
+    templateTab2 = ws2.UsedRange.Value
+    
+    '-----------------------------------
+    ' 5. LOOP EACH UNIQUE VALUE AND GENERATE REPORT
+    '-----------------------------------
+    For Each key In dict.Keys
+        
+        Dim r As Long
+        r = dict(key) 'row of first occurrence for this key in Tab1
+        
+        'Populate Tab 2 with mapped values
+        ws2.Range("B1").Value = ws1.Cells(r, "A").Value              ' Tab1 Col A -> Tab2 B1
+        ws2.Range("B2").Value = "New content" & vbNewLine & _
+                                ws1.Cells(r, "J").Value              ' Tab1 Col J -> Tab2 B2 with prefix
+        ws2.Range("B3").Value = ws1.Cells(r, "K").Value              ' Tab1 Col K -> Tab2 B3
+        ws2.Range("B4").Value = ws1.Cells(r, "L").Value              ' Tab1 Col L -> Tab2 B4
+        
+        'Create clean filename from Tab2 B1
+        exportName = CleanFileName(CStr(ws2.Range("B1").Value))
+        If exportName = "" Then
+            exportName = "Report_" & r
+        End If
+        
+        'Export as Excel and PDF
+        Call ExportReport(ws2, exportName)
+        
+        'Restore Tab 2 to original template
+        ws2.UsedRange.Value = templateTab2
+        
+    Next key
+
+CleanExit:
+    Application.ScreenUpdating = True
+    Application.EnableEvents = True
+    Application.Calculation = xlCalculationAutomatic
+    
+    MsgBox "All reports generated.", vbInformation
+
+End Sub
+
+Private Sub SanitizeTab1(ByVal ws As Worksheet, ByVal lastRow As Long)
+
+    Dim r As Long, c As Long
+    Dim lastCol As Long
+    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+    
+    For r = 2 To lastRow
+        For c = 1 To lastCol
+            With ws.Cells(r, c)
+                If Not IsError(.Value) Then
+                    .Value = Trim(Replace(CStr(.Value), vbLf, " "))
+                End If
+            End With
+        Next c
+    Next r
+
+End Sub
+
+Private Sub SubstituteFromTab4( _
+        ByVal ws1 As Worksheet, _
+        ByVal ws4 As Worksheet, _
+        ByVal lastRow1 As Long, _
+        ByVal lastRow4 As Long)
+
+    Dim arrFind() As Variant
+    Dim arrReplace() As Variant
+    Dim i As Long, r As Long
+    Dim cellVal As String
+    
+    'Load Tab4 mappings into arrays
+    arrFind = ws4.Range("A2:A" & lastRow4).Value
+    arrReplace = ws4.Range("C2:C" & lastRow4).Value
+    
+    'Loop through Tab1 column J
+    For r = 2 To lastRow1
+        cellVal = CStr(ws1.Cells(r, "J").Value)
+        If Len(cellVal) > 0 Then
+            For i = 1 To UBound(arrFind, 1)
+                If Trim(CStr(arrFind(i, 1))) <> "" Then
+                    cellVal = Replace(cellVal, CStr(arrFind(i, 1)), CStr(arrReplace(i, 1)))
+                End If
+            Next i
+            ws1.Cells(r, "J").Value = cellVal
+        End If
+    Next r
+
+End Sub
+
+Private Function CleanFileName(ByVal str As String) As String
+
+    Dim badChars As Variant, ch As Variant
+    badChars = Array("\", "/", ":", "*", "?", """", "<", ">", "|")
+    
+    CleanFileName = Trim(str)
+    
+    For Each ch In badChars
+        CleanFileName = Replace(CleanFileName, ch, "_")
+    Next ch
+
+End Function
+
+Private Sub ExportReport(ByVal ws As Worksheet, ByVal fileName As String)
+
+    Dim folder As String
+    folder = ThisWorkbook.Path
+    If Right(folder, 1) <> "\" Then folder = folder & "\"
+    
+    'Export a copy of the workbook as Excel with this sheet as is
+    ws.Parent.SaveCopyAs folder & fileName & ".xlsx"
+    
+    'Export PDF of the single sheet
+    ws.ExportAsFixedFormat _
+        Type:=xlTypePDF, _
+        Filename:=folder & fileName & ".pdf", _
+        Quality:=xlQualityStandard, _
+        IncludeDocProperties:=True, _
+        IgnorePrintAreas:=False, _
+        OpenAfterPublish:=False
+
+End Sub
