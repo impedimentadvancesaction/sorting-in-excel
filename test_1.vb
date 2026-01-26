@@ -18,6 +18,7 @@ Public Sub PopulateLog_StateAffecting_Master()
 	' [x] One master sub to run everything
 	' [x] Loop used range rows; read column K; write Yes/No for each state column
 	' [x] Handle "All" OR state code match (e.g., USAL)
+	' [x] Filter Log by Checks!B2:C2 date range and copy A:J + selected Affecting columns to Final
 
 	Dim ws As Worksheet
 	Set ws = GetLogWorksheet()
@@ -29,6 +30,7 @@ Public Sub PopulateLog_StateAffecting_Master()
 
 	On Error GoTo CleanFail
 	PopulateLog_StateAffecting ws
+	ExportChecksSelection_ToFinal
 
 CleanExit:
 	Application.Calculation = xlCalculationAutomatic
@@ -39,6 +41,171 @@ CleanExit:
 CleanFail:
 	' Keep it simple: restore Excel state and re-raise
 	Resume CleanExit
+End Sub
+
+' ================================
+' Export filtered Log data to Final
+' ================================
+' Uses:
+' - Checks!B2 = start date
+' - Checks!C2 = end date
+' - Checks!A:A = list of states (e.g., Alabama, Alaska, ...)
+' Output:
+' - Writes headers + filtered rows to Final sheet
+Private Sub ExportChecksSelection_ToFinal()
+	Dim wsChecks As Worksheet, wsLog As Worksheet, wsFinal As Worksheet
+	Set wsChecks = GetWorksheetByName("Checks")
+	Set wsLog = GetWorksheetByName("Log")
+	Set wsFinal = GetWorksheetByName("Final")
+	If wsChecks Is Nothing Or wsLog Is Nothing Or wsFinal Is Nothing Then Exit Sub
+
+	Dim startDate As Date, endDate As Date
+	If Not TryGetDate(wsChecks.Range("B2").Value2, startDate) Then Exit Sub
+	If Not TryGetDate(wsChecks.Range("C2").Value2, endDate) Then Exit Sub
+	If startDate > endDate Then
+		Dim tmp As Date
+		tmp = startDate
+		startDate = endDate
+		endDate = tmp
+	End If
+
+	' Determine the date column on Log by header match (preferred), else fall back to column A.
+	Dim dateCol As Long
+	dateCol = FindDateColumn(wsLog)
+	If dateCol = 0 Then dateCol = 1
+
+	Dim lastRow As Long, lastCol As Long
+	lastRow = wsLog.Cells(wsLog.Rows.Count, dateCol).End(xlUp).Row
+	If lastRow < 2 Then Exit Sub
+	lastCol = wsLog.Cells(1, wsLog.Columns.Count).End(xlToLeft).Column
+
+	' Clear Final and write headers
+	wsFinal.Cells.Clear
+
+	' Build the list of columns to export:
+	' - Always A:J (1..10)
+	' - Then each "<State> Affecting" for states listed in Checks column A
+	Dim exportCols As Collection
+	Set exportCols = New Collection
+	Dim c As Long
+	For c = 1 To 10
+		exportCols.Add c
+	Next c
+
+	Dim states As Collection
+	Set states = ReadStateListFromChecks(wsChecks)
+	If states.Count = 0 Then Exit Sub
+
+	Dim i As Long
+	For i = 1 To states.Count
+		Dim headerText As String
+		headerText = CStr(states(i)) & " Affecting"
+		Dim colIndex As Long
+		colIndex = FindHeaderColumn(wsLog, 1, 1, lastCol, headerText)
+		If colIndex > 0 Then
+			AddUniqueLong exportCols, colIndex
+		End If
+	Next i
+
+	' Write Final headers in the exported order
+	Dim outCol As Long
+	outCol = 1
+	For i = 1 To exportCols.Count
+		wsFinal.Cells(1, outCol).Value2 = wsLog.Cells(1, CLng(exportCols(i))).Value2
+		outCol = outCol + 1
+	Next i
+
+	' Copy filtered rows (without relying on AutoFilter copy behaviour / contiguous ranges)
+	Dim outRow As Long
+	outRow = 2
+
+	Dim r As Long
+	For r = 2 To lastRow
+		Dim rowDate As Date
+		If TryGetDate(wsLog.Cells(r, dateCol).Value2, rowDate) Then
+			If rowDate >= startDate And rowDate <= endDate Then
+				outCol = 1
+				For i = 1 To exportCols.Count
+					wsFinal.Cells(outRow, outCol).Value2 = wsLog.Cells(r, CLng(exportCols(i))).Value2
+					outCol = outCol + 1
+				Next i
+				outRow = outRow + 1
+			End If
+		End If
+	Next r
+End Sub
+
+Private Function GetWorksheetByName(ByVal sheetName As String) As Worksheet
+	On Error Resume Next
+	Set GetWorksheetByName = ThisWorkbook.Worksheets(sheetName)
+	On Error GoTo 0
+End Function
+
+Private Function TryGetDate(ByVal v As Variant, ByRef d As Date) As Boolean
+	On Error GoTo Fail
+	If IsDate(v) Then
+		d = CDate(v)
+		TryGetDate = True
+		Exit Function
+	End If
+Fail:
+	TryGetDate = False
+End Function
+
+Private Function FindDateColumn(ByVal ws As Worksheet) As Long
+	' Tries to locate a date column by common header names in row 1.
+	Dim lastCol As Long
+	lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+
+	Dim candidates As Variant
+	candidates = Array("DATE", "LOG DATE", "CREATED DATE", "CREATED", "START DATE")
+
+	Dim c As Long
+	For c = 1 To lastCol
+		Dim h As String
+		h = UCase$(Trim$(CStr(ws.Cells(1, c).Value2)))
+		Dim i As Long
+		For i = LBound(candidates) To UBound(candidates)
+			If h = CStr(candidates(i)) Then
+				FindDateColumn = c
+				Exit Function
+			End If
+		Next i
+	Next c
+	FindDateColumn = 0
+End Function
+
+Private Function ReadStateListFromChecks(ByVal wsChecks As Worksheet) As Collection
+	' Reads Checks!A:A from row 2 down until first blank.
+	' Expected values: full state names (e.g., "Alabama").
+	Dim result As New Collection
+
+	Dim r As Long
+	r = 2
+	Do While Len(Trim$(CStr(wsChecks.Cells(r, 1).Value2))) > 0
+		Dim s As String
+		s = Trim$(CStr(wsChecks.Cells(r, 1).Value2))
+		AddUniqueString result, s
+		r = r + 1
+	Loop
+
+	Set ReadStateListFromChecks = result
+End Function
+
+Private Sub AddUniqueString(ByVal col As Collection, ByVal value As String)
+	Dim v As Variant
+	For Each v In col
+		If StrComp(CStr(v), value, vbTextCompare) = 0 Then Exit Sub
+	Next v
+	col.Add value
+End Sub
+
+Private Sub AddUniqueLong(ByVal col As Collection, ByVal value As Long)
+	Dim v As Variant
+	For Each v In col
+		If CLng(v) = value Then Exit Sub
+	Next v
+	col.Add value
 End Sub
 
 ' ------------------------
