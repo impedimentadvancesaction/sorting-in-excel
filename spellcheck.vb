@@ -14,23 +14,13 @@ Public Sub Spellcheck_ColumnA_CurrentSheet()
 	Dim rng As Range
 	Set rng = ws.Range("A2:A" & lastRow)
 
-	' Pre-scan: detect if any misspellings exist so we can decide whether to show the follow-up prompts.
+	' Silent spellcheck scan (no Excel dialog): detect if any misspellings exist.
 	Dim hadSpellingErrors As Boolean
 	hadSpellingErrors = RangeHasSpellingErrors(rng)
-
-	' Run Excel's built-in spellcheck dialog over the range.
-	On Error GoTo CleanFail
-	rng.CheckSpelling
 
 	If hadSpellingErrors Then
 		PromptUserConfirmationLoop
 	End If
-
-	Exit Sub
-
-CleanFail:
-	' If spellcheck is canceled or fails for any reason, just exit quietly.
-	Exit Sub
 End Sub
 
 Private Sub PromptUserConfirmationLoop()
