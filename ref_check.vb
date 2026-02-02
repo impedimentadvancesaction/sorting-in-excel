@@ -215,12 +215,56 @@ Private Sub CreateReviewTable(ByVal wsReview As Worksheet, ByVal lastDataRow As 
 End Sub
 
 Private Function JoinDictionaryKeys(ByVal dict As Object, ByVal separator As String) As String
+	If dict Is Nothing Then
+		JoinDictionaryKeys = vbNullString
+		Exit Function
+	End If
+	If dict.Count = 0 Then
+		JoinDictionaryKeys = vbNullString
+		Exit Function
+	End If
+
+	Dim keys As Variant
+	keys = dict.Keys ' Variant array (0-based)
+	QuickSortVariantStrings keys, LBound(keys), UBound(keys)
+
 	Dim result As String
-	Dim k As Variant
-	For Each k In dict.Keys
+	Dim i As Long
+	For i = LBound(keys) To UBound(keys)
 		If Len(result) > 0 Then result = result & separator
-		result = result & CStr(k)
-	Next k
+		result = result & CStr(keys(i))
+	Next i
+
 	JoinDictionaryKeys = result
 End Function
+
+Private Sub QuickSortVariantStrings(ByRef arr As Variant, ByVal first As Long, ByVal last As Long)
+	Dim i As Long, j As Long
+	Dim pivot As String
+	Dim tmp As Variant
+
+	i = first
+	j = last
+	pivot = CStr(arr((first + last) \ 2))
+
+	Do While i <= j
+		Do While StrComp(CStr(arr(i)), pivot, vbTextCompare) < 0
+			i = i + 1
+		Loop
+		Do While StrComp(CStr(arr(j)), pivot, vbTextCompare) > 0
+			j = j - 1
+		Loop
+
+		If i <= j Then
+			tmp = arr(i)
+			arr(i) = arr(j)
+			arr(j) = tmp
+			i = i + 1
+			j = j - 1
+		End If
+	Loop
+
+	If first < j Then QuickSortVariantStrings arr, first, j
+	If i < last Then QuickSortVariantStrings arr, i, last
+End Sub
 
