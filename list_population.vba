@@ -16,7 +16,7 @@ Private Sub Worksheet_Change(ByVal Target As Range)
         ' hidden characters (fake hyphens, non-breaking spaces, etc.)
         ' do not prevent a match.
         Dim specialList As Variant
-        specialList = Array("IG-ND-21", "Value2", "Value3")  ' <-- Replace with your real trigger values
+        specialList = Array("Value1", "Value2", "Value3")  ' <-- Replace with your real trigger values
 
         Dim trigger As Boolean
         Dim v As Variant
