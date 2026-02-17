@@ -120,3 +120,26 @@ Sub ProcessSoC()
 
     MsgBox "SoC processing complete.", vbInformation
 End Sub
+
+Sub CopyUpdatedSoCToSoC()
+
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets("Checks")
+
+    Dim socCol As Long, updatedCol As Long
+    socCol = GetColumnByHeader(ws, "SoC")
+    updatedCol = GetColumnByHeader(ws, "Updated SoC")
+
+    If socCol = 0 Or updatedCol = 0 Then
+        MsgBox "Could not find 'SoC' or 'Updated SoC' column headers.", vbCritical
+        Exit Sub
+    End If
+
+    Dim lastRow As Long
+    lastRow = ws.Cells(ws.Rows.Count, updatedCol).End(xlUp).Row
+
+    ws.Range(ws.Cells(2, socCol), ws.Cells(lastRow, socCol)).Value = _
+        ws.Range(ws.Cells(2, updatedCol), ws.Cells(lastRow, updatedCol)).Value
+
+End Sub
+
