@@ -121,6 +121,10 @@ Sub ProcessSoC()
     MsgBox "SoC processing complete.", vbInformation
 End Sub
 
+'==========================
+'  Copy / Paste from the Updated SoC to the SoC column
+'==========================
+
 Sub CopyUpdatedSoCToSoC()
 
     Dim ws As Worksheet
