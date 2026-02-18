@@ -15,23 +15,43 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 
     Dim data As Variant
     Dim r As Long, c As Long
+    Dim rngText As Range
+    Dim area As Range
 
     ' Prevent recursive triggering while we modify cell values
     On Error GoTo SafeExit
     Application.EnableEvents = False
 
-    ' Load the changed range into memory for fast processing
-    data = Target.Value
+    ' Only process text constants (ignores numbers, dates, blanks, and formulas)
+    ' NOTE: When a single cell changes, Target.Value is a scalar (not a 2-D array).
+    On Error Resume Next
+    Set rngText = Target.SpecialCells(xlCellTypeConstants, xlTextValues)
+    On Error GoTo SafeExit
 
-    ' Iterate through every cell in the changed range
-    For r = 1 To UBound(data, 1)
-        For c = 1 To UBound(data, 2)
-            data(r, c) = CleanCellValue(data(r, c))
-        Next c
-    Next r
+    If rngText Is Nothing Then GoTo SafeExit
 
-    ' Write the cleaned values back to the worksheet
-    Target.Value = data
+    ' Process each area to keep array writes fast and safe
+    For Each area In rngText.Areas
+
+        ' Load the changed range into memory for fast processing
+        data = area.Value2
+
+        If IsArray(data) Then
+            ' Iterate through every cell in the changed range
+            For r = 1 To UBound(data, 1)
+                For c = 1 To UBound(data, 2)
+                    data(r, c) = CleanCellValue(data(r, c))
+                Next c
+            Next r
+
+            ' Write the cleaned values back to the worksheet
+            area.Value2 = data
+        Else
+            ' Single-cell area (scalar)
+            area.Value2 = CleanCellValue(data)
+        End If
+
+    Next area
 
 SafeExit:
     ' Always re-enable events, even if an error occurs
